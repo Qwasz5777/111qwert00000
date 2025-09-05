@@ -1,25 +1,11 @@
 {
-  "name": "dana-verification-app",
-  "version": "1.0.0",
-  "description": "Aplikasi verifikasi DANA dengan OTP",
-  "main": "index.js",
-  "scripts": {
-    "dev": "vercel dev",
-    "start": "vercel start",
-    "build": "echo 'No build step required for static site'"
+  "version": 2,
+  "functions": {
+    "api/send-dana-data.js": {
+      "maxDuration": 10
+    }
   },
-  "keywords": [
-    "verification",
-    "dana",
-    "otp",
-    "javascript"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
-  "dependencies": {
-    "axios": "^1.6.0"
-  },
-  "devDependencies": {
-    "@vercel/node": "^2.0.0"
+  "env": {
+    "NODE_ENV": "production"
   }
 }
