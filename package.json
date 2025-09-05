@@ -1,11 +1,15 @@
 {
-  "version": 2,
-  "functions": {
-    "api/send-dana-data.js": {
-      "maxDuration": 10
-    }
+  "name": "dana-promo-app",
+  "version": "1.0.0",
+  "description": "Aplikasi promo saldo DANA",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "serve public/"
   },
-  "env": {
-    "NODE_ENV": "production"
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0"
   }
 }
